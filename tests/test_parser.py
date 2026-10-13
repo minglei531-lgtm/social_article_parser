@@ -61,6 +61,67 @@ class ArticleParserTests(unittest.TestCase):
         self.assertIn("第一段由 section 和 span 组成", document)
         self.assertIn("第二段同样需要保留", document)
 
+    def test_zhihu_initial_data_wins_over_collapsed_dom_preview(self):
+        answer_id = "2083961731395613124"
+        full_content = (
+            "<p>这是初始数据中的完整第一段，长度足以证明没有使用页面预览，而且其中保留了完整的自然语言内容。</p>"
+            "<p>这是完整第二段，应该在解析结果里保留，也不应该被页面上的阅读全文控件截断。</p>"
+            "<p>这是完整第三段，用来模拟一篇具有正常篇幅和多个段落结构的知乎回答正文。</p>"
+        )
+        payload = json.dumps({
+            "initialState": {
+                "entities": {"answers": {answer_id: {"id": answer_id, "content": full_content}}}
+            }
+        }, ensure_ascii=False)
+        html = f"""
+        <html><head>
+          <title>示例回答 - 知乎</title>
+          <meta property="og:url" content="https://www.zhihu.com/question/1/answer/{answer_id}">
+        </head><body>
+          <div class="ContentItem AnswerItem" name="{answer_id}">
+            <span class="RichText"><p>这是 DOM 中被折叠的简短预览。</p></span>
+            <button>阅读全文</button>
+          </div>
+          <script id="js-initialData" type="text/json">{payload}</script>
+        </body></html>
+        """
+        document, metadata, _ = ArticleParser().parse(html)
+        self.assertEqual(metadata.extractor, "zhihu_initial_answer_data")
+        self.assertIn("完整第一段", document)
+        self.assertIn("完整第二段", document)
+        self.assertNotIn("被折叠的简短预览", document)
+
+    def test_zhihu_body_fragment_uses_primary_answer_item(self):
+        answer_id = "2016066411118731732"
+        other_id = "2010122451300935122"
+        full_content = (
+            "<p>这是仅保留 body 时仍应提取的完整知乎正文第一段，不能因为移除了 head 元数据而变成短预览。</p>"
+            "<p>第二段也必须保留，以验证目标回答 ID 来自页面的主实体标记。</p>"
+        )
+        payload = json.dumps({
+            "initialState": {
+                "entities": {"answers": {
+                    answer_id: {"id": answer_id, "content": full_content},
+                    other_id: {"id": other_id, "content": "<p>不应选中这条相关回答。</p>"},
+                }}
+            }
+        }, ensure_ascii=False)
+        html = f"""
+        <body>
+          <div class="ContentItem AnswerItem" name="{answer_id}" itemprop="mainEntityOfPage">
+            <span class="RichText"><p>被折叠的首答预览。</p></span>
+          </div>
+          <div class="ContentItem AnswerItem" name="{other_id}">
+            <span class="RichText"><p>相关回答预览。</p></span>
+          </div>
+          <script id="js-initialData" type="text/json">{payload}</script>
+        </body>
+        """
+        document, metadata, _ = ArticleParser().parse(html)
+        self.assertEqual(metadata.extractor, "zhihu_initial_answer_data")
+        self.assertIn("完整知乎正文第一段", document)
+        self.assertNotIn("不应选中", document)
+
     def test_pathologically_deep_html_is_rejected_early(self):
         html = "<div>" * 600 + "正文" + "</div>" * 600
         with self.assertRaises(HTMLTooLargeError):

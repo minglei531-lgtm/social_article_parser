@@ -113,7 +113,11 @@ class ArticleParser:
         length_score = min(38.0, math.log1p(candidate.text_length) * 5.0)
         language_score = candidate.chinese_ratio * 18.0
         paragraphs_score = min(18.0, candidate.paragraph_count * 2.5)
-        known_bonus = 15.0 if candidate.name.startswith("wechat_dom") else 10.0 if candidate.name.endswith("embedded_article_data") else 0.0
+        known_bonus = (
+            15.0 if candidate.name.startswith(("wechat_dom", "zhihu_dom", "zhihu_initial_answer_data"))
+            else 12.0 if candidate.name.endswith("embedded_article_data")
+            else 0.0
+        )
         title_bonus = 4.0 if title and self._title_related(title, text) else 0.0
         link_penalty = min(20.0, candidate.link_ratio * 25.0)
         noise_penalty = min(18.0, candidate.noise_hits * 3.0)
@@ -176,7 +180,12 @@ class ArticleParser:
         if candidate.link_ratio > 0.35:
             reasons.append("链接文字占比较高，可能混入导航或推荐内容。")
             score_confidence -= 0.12
-        if not candidate.name.startswith(("wechat_dom", "wechat_embedded_article_data")):
+        if not candidate.name.startswith((
+            "wechat_dom",
+            "wechat_embedded_article_data",
+            "zhihu_dom",
+            "zhihu_initial_answer_data",
+        )):
             reasons.append("未命中特定来源结构，使用通用正文识别。")
             score_confidence -= 0.08
         if not markdown:

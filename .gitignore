@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.build-tools/
 build/
 build_candidate/
 dist_candidate/
